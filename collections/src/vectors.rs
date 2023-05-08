@@ -43,18 +43,18 @@ pub fn mode(vector: &[i32]) -> Option<i32> {
     return Some(max_key);
 }
 
-fn selection_sort(vector: &[i32]) -> Vec<i32> {
+fn selection_sort<T: Clone + PartialOrd>(vector: &[T]) -> Vec<T> {
     let len = vector.len();
-    let mut sorted: Vec<i32> = vector.to_vec();
+    let mut sorted: Vec<T> = vector.to_vec();
 
     for i in 0..(len - 1) {
-        let mut smallest = sorted[i];
+        let mut smallest = &sorted[i];
         let mut smallest_index = i;
 
         for j in (i + 1)..len {
-            if sorted[j] < smallest {
-                smallest = sorted[j];
+            if sorted[j] < *smallest {
                 smallest_index = j;
+                smallest = &sorted[j];
             }
         }
 
