@@ -5,7 +5,7 @@ mod pig_latin;
 mod employees;
 
 fn main() {
-    let vector = vec![23, 4, 1, 98, 32, 1, -32, 6, -293];
+    let vector = vec![23, 4, 1, 98, 32, 1, -32, 6, -293, -100, 29, 1000];
 
     let median = vectors::median(&vector);
     let mode = vectors::mode(&vector);
