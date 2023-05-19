@@ -10,8 +10,9 @@ fn main() {
     let median = vectors::median(&vector);
     let mode = vectors::mode(&vector);
 
-    println!("{:?}", median);
-    println!("{:?}", mode);
+    println!("The vector: {:?}", vector);
+    println!("median: {}", median.map_or(String::from("Empty Vector"), |it| it.to_string()));
+    println!("mode: {}", mode.map_or(String::from("Empty Vector"), |it| it.to_string()));
 
     println!("{}", pig_latin::pigfy("To be or not to be, that is the question"));
 

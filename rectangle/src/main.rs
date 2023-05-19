@@ -90,6 +90,23 @@ mod tests {
 
         assert!(!smaller.can_hold(&bigger));
     }
+
+    #[test]
+    fn calculate_area() {
+        let rect1 = Rectangle {
+            width: 10,
+            height: 25,
+        };
+
+        assert_eq!(rect1.area(), 250);
+
+        let rect2 = Rectangle {
+            width: 3,
+            height:7,
+        };
+
+        assert_eq!(rect2.area(), 21);
+    }
     
     #[test]
     fn can_compare() {

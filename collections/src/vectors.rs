@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 // Given a list of integers, use a vector and return the median (when sorted, the value in the middle position)
 // and mode (the value that occurs most often; a hash map will be helpful here) of the list.
@@ -11,8 +11,6 @@ pub fn median(vector: &[i32]) -> Option<i32> {
 
     let sorted = selection_sort(vector);
 
-    println!("{:?}", sorted);
-
     let half = len / 2;
 
     if len % 2 != 0 {
@@ -22,21 +20,21 @@ pub fn median(vector: &[i32]) -> Option<i32> {
     }
 }
 
-pub fn mode(vector: &[i32]) -> Option<i32> {
+pub fn mode<T: Eq + Hash>(vector: &[T]) -> Option<&T> {
     if vector.is_empty() {
         return None;
     }
 
     let mut map = HashMap::new();
-    let mut max_key: i32 = vector[0];
-    let mut max: i32 = 1;
-    
+    let mut max_key = &vector[0];
+    let mut max: usize = 1;
+
     for i in vector.iter() {
-        let p = map.entry(*i).or_insert(0);
+        let p = map.entry(i).or_insert(0);
         *p += 1;
         if *p > max {
             max = *p;
-            max_key = *i;
+            max_key = i;
         }
     }
 
