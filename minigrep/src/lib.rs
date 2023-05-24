@@ -1,4 +1,4 @@
-use std::{error::Error, fs, env};
+use std::{env, error::Error, fs};
 
 pub struct Config<'a> {
     pub query: &'a str,
@@ -38,25 +38,44 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn search<'a>(query: &str, text: &'a str) -> Vec<&'a str> {
-    let mut result = Vec::new();
-
-    for line in text.lines() {
-        if line.contains(query) {
-            result.push(line);
-        }
-    }
-
-    result
+    return seach_closure(
+        query,
+        text,
+        |query, _, line, _, result| {
+            if line.contains(query) {
+                result.push(line);
+            }
+        },
+    );
 }
 
 pub fn search_case_insensitive<'a>(query: &str, text: &'a str) -> Vec<&'a str> {
     let query = &query.to_lowercase();
-    let mut result = Vec::new();
 
-    for line in text.lines() {
-        if line.to_lowercase().contains(query) {
-            result.push(line);
-        }
+    return seach_closure(
+        query,
+        text,
+        |query, _, line, _, result| {
+            if line.to_lowercase().contains(query) {
+                result.push(line);
+            }
+        },
+    );
+}
+
+fn seach_closure<'a, R>(
+    query: &str,
+    text: &'a str,
+    line_adder: R,
+) -> Vec<&'a str>
+where
+    R: FnOnce(&str, &Vec<&'a str>, &'a str, usize, &mut Vec<&'a str>) -> () + Copy,
+{
+    let mut result = Vec::new();
+    let lines: Vec<&str> = text.lines().collect();
+
+    for (i, line) in lines.iter().enumerate() {
+        line_adder(&query, &lines, line, i, &mut result);
     }
 
     result
