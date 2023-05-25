@@ -1,90 +1,271 @@
+use std::cell::{RefCell, RefMut};
+use std::collections::HashSet;
+use std::fmt::Display;
 use std::{env, error::Error, fs};
 
 pub struct Config<'a> {
     pub query: &'a str,
     pub file_path: &'a str,
     pub ignore_case: bool,
+    pub line_numbers: bool,
+    pub context: (usize, usize),
 }
 
 impl<'a> Config<'a> {
-    pub fn build(args: &'a [String]) -> Result<Self, &'static str> {
-        if args.len() != 3 {
-            return Err("Incorrect program usage! Please supply two arguments: a query and a path");
+    pub fn build(args: &'a [String]) -> Result<Self, Box<dyn Error>> {
+        if args.len() < 3 {
+            return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query and a path and optional flaps preceded by -"));
         }
 
-        let query = args[1].as_str();
-        let file_path = args[2].as_str();
+        let args: Vec<RefCell<Arg>> = args
+            .into_iter()
+            .skip(1)
+            .map(|text| RefCell::new(Arg::new(text)))
+            .collect();
+        let mut query = None;
+        let mut file_path = None;
+        let mut ignore_case = false;
+        let mut line_numbers = false;
+        let mut context = (0, 0);
 
-        let ignore_case = env::var("IGNORE_CASE").is_ok();
+        for i in 0..args.len() {
+            let mut arg = args[i].borrow_mut();
+            if arg.consumed {
+                continue;
+            }
 
-        Ok(Config { query, file_path, ignore_case })
+            let flag = Flag::parse(&arg, args.get(i + 1))?;
+
+            if let Some(flag) = flag {
+                match flag {
+                    Flag::CaseInsensitve => ignore_case = true,
+                    Flag::LineNumber => line_numbers = true,
+                    Flag::Before(n) => context.0 = n,
+                    Flag::After(n) => context.1 = n,
+                    Flag::Context(n) => {
+                        context.0 = n;
+                        context.1 = n;
+                    }
+                }
+            } else {
+                if query.is_none() {
+                    query = Some(arg.text);
+                } else if file_path.is_none() {
+                    file_path = Some(arg.text);
+                } else {
+                    return Err(MyErr::boxed(
+                        "Too many arguments! Please suply the query and a path.",
+                    ));
+                }
+            }
+
+            arg.consumed = true;
+        }
+
+        let query = match query {
+            Some(v) => v,
+            None => return Err(MyErr::boxed("Please supply two non flag arguments!")),
+        };
+
+        let file_path = match file_path {
+            Some(v) => v,
+            None => return Err(MyErr::boxed("Please supply two non flag arguments!")),
+        };
+
+        let ignore_case_env = env::var("IGNORE_CASE").is_ok();
+        if ignore_case_env {
+            ignore_case = true;
+        }
+
+        Ok(Config {
+            query,
+            file_path,
+            ignore_case,
+            line_numbers,
+            context,
+        })
     }
 }
+
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let text = fs::read_to_string(config.file_path)?;
 
-    let results = if config.ignore_case {
-        search_case_insensitive(&config.query, &text)
-    } else {
-        search(&config.query, &text)
-    };
-
-    for line in results {
+    for line in search(&text, &config) {
         println!("{line}");
     }
 
     Ok(())
 }
 
-pub fn search<'a>(query: &str, text: &'a str) -> Vec<&'a str> {
-    return seach_closure(
-        query,
-        text,
-        |query, _, line, _, result| {
-            if line.contains(query) {
-                result.push(line);
-            }
-        },
-    );
+fn search(text: &str, config: &Config) -> Vec<String> {
+    let query = if config.ignore_case {
+        config.query.to_lowercase()
+    } else {
+        String::from(config.query)
+    };
+
+    let line_printer = if config.line_numbers {
+        |line, i| format!("{}: {}", i + 1, line)
+    } else {
+        |line, _| String::from(line)
+    };
+
+    let should_add = if config.ignore_case {
+        |query: &str, line: &str, _| -> bool { line.to_lowercase().contains(query) }
+    } else {
+        |query: &str, line: &str, _| -> bool { line.contains(query) }
+    };
+
+    seach_closure(&query, text, should_add, line_printer, config.context)
 }
 
-pub fn search_case_insensitive<'a>(query: &str, text: &'a str) -> Vec<&'a str> {
-    let query = &query.to_lowercase();
-
-    return seach_closure(
-        query,
-        text,
-        |query, _, line, _, result| {
-            if line.to_lowercase().contains(query) {
-                result.push(line);
-            }
-        },
-    );
-}
-
-fn seach_closure<'a, R>(
+fn seach_closure<'a, R, S>(
     query: &str,
     text: &'a str,
-    line_adder: R,
-) -> Vec<&'a str>
+    should_add: R,
+    line_printer: S,
+    context: (usize, usize),
+) -> Vec<String>
 where
-    R: FnOnce(&str, &Vec<&'a str>, &'a str, usize, &mut Vec<&'a str>) -> () + Copy,
+    R: FnOnce(&str, &'a str, usize) -> bool + Copy,
+    S: FnOnce(&'a str, usize) -> String + Copy,
 {
     let mut result = Vec::new();
+    let mut lines_to_add = HashSet::new();
     let lines: Vec<&str> = text.lines().collect();
 
     for (i, line) in lines.iter().enumerate() {
-        line_adder(&query, &lines, line, i, &mut result);
+        if should_add(query, line, i) {
+            for j in (i.saturating_sub(context.0)..i).rev() {
+                lines_to_add.insert(j);
+            }
+
+            lines_to_add.insert(i);
+
+            for j in i..=std::cmp::min(i + context.1, lines.len() - 1) {
+                lines_to_add.insert(j);
+            }
+        }
+    }
+
+    let mut lines_to_add: Vec<usize> = lines_to_add.into_iter().collect();
+    lines_to_add.sort();
+
+    for i in lines_to_add {
+        result.push(line_printer(lines[i], i));
     }
 
     result
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum Flag {
+    CaseInsensitve,
+    LineNumber,
+    Before(usize),
+    After(usize),
+    Context(usize),
+}
+
+impl Flag {
+    fn parse(
+        arg: &RefMut<Arg>,
+        next: Option<&RefCell<Arg>>,
+    ) -> Result<Option<Self>, Box<dyn Error>> {
+        if arg.text.len() != 2 || !arg.text.starts_with("-") {
+            return Ok(None);
+        }
+
+        match arg.text {
+            "-i" => Ok(Some(Flag::CaseInsensitve)),
+            "-a" => {
+                let number = read_usize_flag("-a", next)?;
+                Ok(Some(Flag::After(number)))
+            }
+            "-b" => {
+                let number = read_usize_flag("-b", next)?;
+                Ok(Some(Flag::Before(number)))
+            }
+            "-c" => {
+                let number = read_usize_flag("-c", next)?;
+                Ok(Some(Flag::Context(number)))
+            }
+            "-n" => Ok(Some(Flag::LineNumber)),
+            _ => Err(MyErr::boxed(&format!("Flag {} doesnt exist", arg.text))),
+        }
+    }
+}
+
+struct Arg<'a> {
+    text: &'a str,
+    consumed: bool,
+}
+
+impl<'a> Arg<'a> {
+    fn new(text: &'a str) -> Self {
+        Arg {
+            text,
+            consumed: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MyErr {
+    message: String,
+}
+
+impl MyErr {
+    fn new(message: &str) -> Self {
+        MyErr {
+            message: message.to_owned(),
+        }
+    }
+
+    fn boxed(message: &str) -> Box<Self> {
+        Box::new(Self::new(message))
+    }
+}
+
+impl Display for MyErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.message))
+    }
+}
+
+impl Error for MyErr {}
+
+fn read_usize_flag(flag_name: &str, arg: Option<&RefCell<Arg>>) -> Result<usize, Box<dyn Error>> {
+    if arg.is_none() {
+        return Err(MyErr::boxed(&format!(
+            "Please provide a number argument for the {} flag",
+            flag_name
+        )));
+    }
+    let mut arg: RefMut<Arg> = arg.unwrap().borrow_mut();
+    let number: usize = arg.text.parse()?;
+    arg.consumed = true;
+
+    Ok(number)
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+
+    fn mock_config<'a>(query: &'a str) -> Config<'a> {
+        let empty: &'static str = "";
+
+        Config {
+            query,
+            file_path: empty,
+            ignore_case: false,
+            line_numbers: false,
+            context: (0, 0),
+        }
+    }
 
     #[test]
     fn one_result() {
@@ -95,7 +276,9 @@ safe, fast, productive.
 Pick three.
 Duct tape.";
 
-        assert_eq!(vec!["safe, fast, productive."], search(query, contents));
+        let config = mock_config(query);
+
+        assert_eq!(vec!["safe, fast, productive."], search(contents, &config));
     }
 
     #[test]
@@ -107,9 +290,43 @@ safe, fast, productive.
 Pick three.
 Trust me.";
 
-        assert_eq!(
-            vec!["Rust:", "Trust me."],
-            search_case_insensitive(query, contents)
-        );
+        let mut config = mock_config(query);
+        config.ignore_case = true;
+
+        assert_eq!(vec!["Rust:", "Trust me."], search(contents, &config));
+    }
+
+    #[test]
+    fn context() {
+        let query = "fast";
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Trust me.";
+
+        let mut config = mock_config(query);
+
+        config.context = (1, 1);
+        assert_eq!(vec!["Rust:", "safe, fast, productive.", "Pick three."], search(contents, &config));
+
+        config.context = (10, 0);
+        assert_eq!(vec!["Rust:", "safe, fast, productive."], search(contents, &config));
+
+        config.context = (0, 10);
+        assert_eq!(vec!["safe, fast, productive.", "Pick three.", "Trust me."], search(contents, &config));
+    }
+
+    #[test]
+    fn line_number() {
+        let query = "I am";
+        let contents = "\
+I am how I am
+Too bad I'm not
+who I need to be";
+
+        let mut config = mock_config(query);
+        config.line_numbers = true;
+        assert_eq!(vec!["1: I am how I am"], search(contents, &config));
     }
 }
