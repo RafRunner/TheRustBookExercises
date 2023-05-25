@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::{env, error::Error, fs};
 
+#[derive(Debug)]
 pub struct Config<'a> {
     pub query: &'a str,
     pub file_path: &'a str,
@@ -14,19 +15,20 @@ pub struct Config<'a> {
 impl<'a> Config<'a> {
     pub fn build(args: &'a [String]) -> Result<Self, Box<dyn Error>> {
         if args.len() < 3 {
-            return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query and a path and optional flaps preceded by -"));
+            return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query and a path and optional flags preceded by -"));
         }
+
+        let mut query = None;
+        let mut file_path = None;
+        let mut ignore_case = false;
+        let mut line_numbers = false;
+        let mut context = (0, 0);
 
         let args: Vec<RefCell<Arg>> = args
             .into_iter()
             .skip(1)
             .map(|text| RefCell::new(Arg::new(text)))
             .collect();
-        let mut query = None;
-        let mut file_path = None;
-        let mut ignore_case = false;
-        let mut line_numbers = false;
-        let mut context = (0, 0);
 
         for i in 0..args.len() {
             let mut arg = args[i].borrow_mut();
@@ -62,15 +64,9 @@ impl<'a> Config<'a> {
             arg.consumed = true;
         }
 
-        let query = match query {
-            Some(v) => v,
-            None => return Err(MyErr::boxed("Please supply two non flag arguments!")),
-        };
+        let query = query.ok_or(MyErr::boxed("Please supply two non flag arguments!"))?;
 
-        let file_path = match file_path {
-            Some(v) => v,
-            None => return Err(MyErr::boxed("Please supply two non flag arguments!")),
-        };
+        let file_path = file_path.ok_or(MyErr::boxed("Please supply two non flag arguments!"))?;
 
         let ignore_case_env = env::var("IGNORE_CASE").is_ok();
         if ignore_case_env {
@@ -159,7 +155,7 @@ where
     result
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum Flag {
     CaseInsensitve,
     LineNumber,
@@ -197,6 +193,7 @@ impl Flag {
     }
 }
 
+#[derive(Debug)]
 struct Arg<'a> {
     text: &'a str,
     consumed: bool,
