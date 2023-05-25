@@ -83,7 +83,6 @@ impl<'a> Config<'a> {
     }
 }
 
-
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let text = fs::read_to_string(config.file_path)?;
 
@@ -94,7 +93,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn search(text: &str, config: &Config) -> Vec<String> {
+pub fn search(text: &str, config: &Config) -> Vec<String> {
     let query = if config.ignore_case {
         config.query.to_lowercase()
     } else {
@@ -116,7 +115,7 @@ fn search(text: &str, config: &Config) -> Vec<String> {
     seach_closure(&query, text, should_add, line_printer, config.context)
 }
 
-fn seach_closure<'a, R, S>(
+pub fn seach_closure<'a, R, S>(
     query: &str,
     text: &'a str,
     should_add: R,
@@ -133,20 +132,14 @@ where
 
     for (i, line) in lines.iter().enumerate() {
         if should_add(query, line, i) {
-            for j in (i.saturating_sub(context.0)..i).rev() {
-                lines_to_add.insert(j);
-            }
-
-            lines_to_add.insert(i);
-
-            for j in i..=std::cmp::min(i + context.1, lines.len() - 1) {
+            for j in i.saturating_sub(context.0)..=std::cmp::min(i + context.1, lines.len() - 1) {
                 lines_to_add.insert(j);
             }
         }
     }
 
     let mut lines_to_add: Vec<usize> = lines_to_add.into_iter().collect();
-    lines_to_add.sort();
+    lines_to_add.sort_unstable();
 
     for i in lines_to_add {
         result.push(line_printer(lines[i], i));
@@ -156,7 +149,7 @@ where
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
-pub enum Flag {
+enum Flag {
     CaseInsensitve,
     LineNumber,
     Before(usize),
@@ -234,17 +227,19 @@ impl Display for MyErr {
 impl Error for MyErr {}
 
 fn read_usize_flag(flag_name: &str, arg: Option<&RefCell<Arg>>) -> Result<usize, Box<dyn Error>> {
-    if arg.is_none() {
-        return Err(MyErr::boxed(&format!(
+    match arg {
+        None => Err(MyErr::boxed(&format!(
             "Please provide a number argument for the {} flag",
             flag_name
-        )));
-    }
-    let mut arg: RefMut<Arg> = arg.unwrap().borrow_mut();
-    let number: usize = arg.text.parse()?;
-    arg.consumed = true;
+        ))),
+        Some(arg) => {
+            let mut arg: RefMut<Arg> = arg.borrow_mut();
+            let number: usize = arg.text.parse()?;
+            arg.consumed = true;
 
-    Ok(number)
+            Ok(number)
+        },
+    }
 }
 
 #[cfg(test)]
@@ -318,12 +313,12 @@ Trust me.";
     fn line_number() {
         let query = "I am";
         let contents = "\
-I am how I am
+I am who I am
 Too bad I'm not
 who I need to be";
 
         let mut config = mock_config(query);
         config.line_numbers = true;
-        assert_eq!(vec!["1: I am how I am"], search(contents, &config));
+        assert_eq!(vec!["1: I am who I am"], search(contents, &config));
     }
 }
