@@ -107,9 +107,9 @@ pub fn search(text: &str, config: &Config) -> Vec<String> {
     };
 
     let should_add = if config.ignore_case {
-        |query: &str, line: &str, _| -> bool { line.to_lowercase().contains(query) }
+        |query: &str, line: &str, _| line.to_lowercase().contains(query)
     } else {
-        |query: &str, line: &str, _| -> bool { line.contains(query) }
+        |query: &str, line: &str, _| line.contains(query)
     };
 
     seach_closure(&query, text, should_add, line_printer, config.context)
@@ -118,13 +118,13 @@ pub fn search(text: &str, config: &Config) -> Vec<String> {
 pub fn seach_closure<'a, R, S>(
     query: &str,
     text: &'a str,
-    should_add: R,
-    line_printer: S,
+    mut should_add: R,
+    mut line_printer: S,
     context: (usize, usize),
 ) -> Vec<String>
 where
-    R: FnOnce(&str, &'a str, usize) -> bool + Copy,
-    S: FnOnce(&'a str, usize) -> String + Copy,
+    R: FnMut(&str, &'a str, usize) -> bool,
+    S: FnMut(&'a str, usize) -> String,
 {
     let mut result = Vec::new();
     let mut lines_to_add = HashSet::new();
