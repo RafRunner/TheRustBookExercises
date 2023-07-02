@@ -149,5 +149,13 @@ mod tests {
 
         list.pop();
         assert!(vec![42].iter().eq(list.iter()));
+
+        list.pop();
+        assert!(Vec::<i32>::new().iter().eq(list.iter()));
+
+        let long_list = vec![83, 1, 23, -9, 23, 1, 0, -90];
+        long_list.iter().for_each(|v| list.add(*v));
+
+        assert!(long_list.iter().eq(list.iter()));
     }
 }

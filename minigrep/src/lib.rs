@@ -1,4 +1,4 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::{env, error::Error, fs};
@@ -36,7 +36,11 @@ impl<'a> Config<'a> {
                 continue;
             }
 
-            let flag = Flag::parse(&arg, args.get(i + 1))?;
+            let flag = if let Some(rc) = args.get(i + 1) {
+                Flag::parse(&mut arg, Some(&mut *rc.borrow_mut()))
+            } else {
+                Flag::parse(&mut arg, None)
+            }?;
 
             if let Some(flag) = flag {
                 match flag {
@@ -158,10 +162,7 @@ enum Flag {
 }
 
 impl Flag {
-    fn parse(
-        arg: &RefMut<Arg>,
-        next: Option<&RefCell<Arg>>,
-    ) -> Result<Option<Self>, Box<dyn Error>> {
+    fn parse(arg: &mut Arg, next: Option<&mut Arg>) -> Result<Option<Self>, Box<dyn Error>> {
         if arg.text.len() != 2 || !arg.text.starts_with("-") {
             return Ok(None);
         }
@@ -226,19 +227,18 @@ impl Display for MyErr {
 
 impl Error for MyErr {}
 
-fn read_usize_flag(flag_name: &str, arg: Option<&RefCell<Arg>>) -> Result<usize, Box<dyn Error>> {
+fn read_usize_flag(flag_name: &str, arg: Option<&mut Arg>) -> Result<usize, Box<dyn Error>> {
     match arg {
         None => Err(MyErr::boxed(&format!(
             "Please provide a number argument for the {} flag",
             flag_name
         ))),
         Some(arg) => {
-            let mut arg: RefMut<Arg> = arg.borrow_mut();
             let number: usize = arg.text.parse()?;
             arg.consumed = true;
 
             Ok(number)
-        },
+        }
     }
 }
 
