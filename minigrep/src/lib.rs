@@ -18,8 +18,7 @@ impl<'a> Config<'a> {
             return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query and a path and optional flags preceded by -"));
         }
 
-        let mut query = None;
-        let mut file_path = None;
+        let mut non_flag_args = vec![];
         let mut ignore_case = false;
         let mut line_numbers = false;
         let mut context = (0, 0);
@@ -36,11 +35,9 @@ impl<'a> Config<'a> {
                 continue;
             }
 
-            let flag = if let Some(rc) = args.get(i + 1) {
-                Flag::parse(&mut arg, Some(&mut *rc.borrow_mut()))
-            } else {
-                Flag::parse(&mut arg, None)
-            }?;
+            let mut next = args.get(i + 1).map(|rc| rc.borrow_mut());
+
+            let flag = Flag::parse(&mut arg, next.as_deref_mut())?;
 
             if let Some(flag) = flag {
                 match flag {
@@ -54,23 +51,21 @@ impl<'a> Config<'a> {
                     }
                 }
             } else {
-                if query.is_none() {
-                    query = Some(arg.text);
-                } else if file_path.is_none() {
-                    file_path = Some(arg.text);
-                } else {
-                    return Err(MyErr::boxed(
-                        "Too many arguments! Please suply the query and a path.",
-                    ));
-                }
+                non_flag_args.push(arg.text);
             }
 
             arg.consumed = true;
         }
 
-        let query = query.ok_or(MyErr::boxed("Please supply two non flag arguments!"))?;
+        if non_flag_args.len() != 2 {
+            return Err(MyErr::boxed(
+                "Please supply exactly two non flag arguments, a query and a path!",
+            ));
+        }
 
-        let file_path = file_path.ok_or(MyErr::boxed("Please supply two non flag arguments!"))?;
+        let query = non_flag_args[0];
+
+        let file_path = non_flag_args[1];
 
         let ignore_case_env = env::var("IGNORE_CASE").is_ok();
         if ignore_case_env {
@@ -300,13 +295,22 @@ Trust me.";
         let mut config = mock_config(query);
 
         config.context = (1, 1);
-        assert_eq!(vec!["Rust:", "safe, fast, productive.", "Pick three."], search(contents, &config));
+        assert_eq!(
+            vec!["Rust:", "safe, fast, productive.", "Pick three."],
+            search(contents, &config)
+        );
 
         config.context = (10, 0);
-        assert_eq!(vec!["Rust:", "safe, fast, productive."], search(contents, &config));
+        assert_eq!(
+            vec!["Rust:", "safe, fast, productive."],
+            search(contents, &config)
+        );
 
         config.context = (0, 10);
-        assert_eq!(vec!["safe, fast, productive.", "Pick three.", "Trust me."], search(contents, &config));
+        assert_eq!(
+            vec!["safe, fast, productive.", "Pick three.", "Trust me."],
+            search(contents, &config)
+        );
     }
 
     #[test]
