@@ -18,7 +18,7 @@ impl<'a, T> Iterator for ListIterator<'a, T> {
         match self.current {
             List::Cons(val, next) => {
                 self.current = next;
-                Some(&val)
+                Some(val)
             }
             List::Nil => None,
         }
@@ -83,6 +83,13 @@ impl<T> List<T> {
         }
     }
 
+    pub fn peek(&self) -> Option<&T> {
+        match self {
+            List::Cons(value, _) => Some(value),
+            List::Nil => None,
+        }
+    }
+
     pub fn is_nil(&self) -> bool {
         if let List::Nil = self {
             true
@@ -138,6 +145,8 @@ mod tests {
     #[test]
     fn test_add_and_pop_2() {
         let mut list: List<i32> = Nil;
+
+        assert_eq!(None, list.peek());
         
         assert!(Vec::<i32>::new().iter().eq(list.iter()));
 
@@ -146,6 +155,8 @@ mod tests {
 
         list.add(101);
         assert!(vec![42, 101].iter().eq(list.iter()));
+
+        assert_eq!(42, *list.peek().unwrap());
 
         list.pop();
         assert!(vec![42].iter().eq(list.iter()));
