@@ -15,7 +15,7 @@ pub struct Config<'a> {
 impl<'a> Config<'a> {
     pub fn build(args: &'a [String]) -> Result<Self, Box<dyn Error>> {
         if args.len() < 3 {
-            return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query and a path and optional flags preceded by -"));
+            return Err(MyErr::boxed("Incorrect program usage! Please supply two arguments: a query, a path and optional flags preceded by -"));
         }
 
         let mut non_flag_args = vec![];
@@ -59,7 +59,7 @@ impl<'a> Config<'a> {
 
         if non_flag_args.len() != 2 {
             return Err(MyErr::boxed(
-                "Please supply exactly two non flag arguments, a query and a path!",
+                "Please supply exactly two non flag arguments: a query and a path!",
             ));
         }
 
@@ -165,19 +165,34 @@ impl Flag {
         match arg.text {
             "-i" => Ok(Some(Flag::CaseInsensitve)),
             "-a" => {
-                let number = read_usize_flag("-a", next)?;
+                let number = Flag::read_usize_flag("-a", next)?;
                 Ok(Some(Flag::After(number)))
             }
             "-b" => {
-                let number = read_usize_flag("-b", next)?;
+                let number = Flag::read_usize_flag("-b", next)?;
                 Ok(Some(Flag::Before(number)))
             }
             "-c" => {
-                let number = read_usize_flag("-c", next)?;
+                let number = Flag::read_usize_flag("-c", next)?;
                 Ok(Some(Flag::Context(number)))
             }
             "-n" => Ok(Some(Flag::LineNumber)),
-            _ => Err(MyErr::boxed(&format!("Flag {} doesnt exist", arg.text))),
+            _ => Err(MyErr::boxed(&format!("Flag {} doesn't exist", arg.text))),
+        }
+    }
+
+    fn read_usize_flag(flag_name: &str, arg: Option<&mut Arg>) -> Result<usize, Box<dyn Error>> {
+        match arg {
+            None => Err(MyErr::boxed(&format!(
+                "Please provide a number argument for the {} flag",
+                flag_name
+            ))),
+            Some(arg) => {
+                let number: usize = arg.text.parse()?;
+                arg.consumed = true;
+    
+                Ok(number)
+            }
         }
     }
 }
