@@ -1,17 +1,15 @@
-use std::{fmt::Display, fmt, ptr};
+use std::{fmt, fmt::Display, marker::PhantomData, ptr};
 
 pub struct List<T> {
-    head: Link<T>,
-    tail: Link<T>,
+    head: *mut Node<T>,
+    tail: *mut Node<T>,
     len: usize,
 }
 
-type Link<T> = *mut Node<T>;
-
 struct Node<T> {
     value: T,
-    next: Link<T>,
-    prev: Link<T>,
+    next: *mut Node<T>,
+    prev: *mut Node<T>,
 }
 
 impl<T> Node<T> {
@@ -33,10 +31,14 @@ impl<T> List<T> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     pub fn push_back(&mut self, value: T) {
         self.len += 1;
 
-        let mut new_tail = Box::into_raw(Node::new(value));
+        let new_tail = Box::into_raw(Node::new(value));
 
         unsafe {
             if self.tail.is_null() {
@@ -53,7 +55,7 @@ impl<T> List<T> {
     pub fn push_front(&mut self, value: T) {
         self.len += 1;
 
-        let mut new_head = Box::into_raw(Node::new(value));
+        let new_head = Box::into_raw(Node::new(value));
 
         unsafe {
             if self.head.is_null() {
@@ -106,6 +108,54 @@ impl<T> List<T> {
             }
         }
     }
+
+    pub fn peek_front(&self) -> Option<&T> {
+        if self.head.is_null() {
+            None
+        } else {
+            unsafe { Some(&(*self.head).value) }
+        }
+    }
+
+    pub fn peek_back(&self) -> Option<&T> {
+        if self.tail.is_null() {
+            None
+        } else {
+            unsafe { Some(&(*self.tail).value) }
+        }
+    }
+
+    pub fn peek_mut_front(&mut self) -> Option<&mut T> {
+        if self.head.is_null() {
+            None
+        } else {
+            unsafe { Some(&mut (*self.head).value) }
+        }
+    }
+
+    pub fn peek_mut_back(&mut self) -> Option<&mut T> {
+        if self.tail.is_null() {
+            None
+        } else {
+            unsafe { Some(&mut (*self.tail).value) }
+        }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            current_head: self.head,
+            current_tail: self.tail,
+            _boo: PhantomData,
+        }
+    }
+}
+
+// Drop here is also needed or we'll leak memory
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        while self.pop_front().is_some() {
+        }
+    }
 }
 
 impl<T> Display for List<T>
@@ -132,6 +182,60 @@ where
         }
 
         formater.write_str("]")
+    }
+}
+
+pub struct Iter<'a, T> {
+    current_head: *const Node<T>,
+    current_tail: *const Node<T>,
+    _boo: PhantomData<&'a T>,
+}
+
+impl<'a, T> Iter<'a, T> {
+    fn have_pointers_met(&mut self) -> bool {
+        // front and back have met in the middle
+        if self.current_head == self.current_tail {
+            self.current_head = ptr::null();
+            self.current_tail = ptr::null();
+
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_head.is_null() {
+            None
+        } else {
+            unsafe {
+                let reference = &(*self.current_head).value;
+                if !self.have_pointers_met() {
+                    self.current_head = (*self.current_head).next;
+                }
+                Some(reference)
+            }
+        }
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.current_tail.is_null() {
+            None
+        } else {
+            unsafe {
+                let reference = &(*self.current_tail).value;
+                if !self.have_pointers_met() {
+                    self.current_tail = (*self.current_tail).prev;
+                }
+                Some(reference)
+            }
+        }
     }
 }
 
@@ -217,5 +321,69 @@ mod test {
         assert_eq!(Some(100), list.pop_back());
         assert_eq!(Some(200), list.pop_back());
         assert_eq!(None, list.pop_back());
+    }
+
+    #[test]
+    fn peek_and_peek_mut() {
+        let mut list = List::new();
+
+        assert_eq!(None, list.peek_front());
+        assert_eq!(None, list.peek_back());
+
+        list.push_front("hello");
+        list.push_back("world");
+
+        assert_eq!(Some(&"hello"), list.peek_front());
+        assert_eq!(Some(&"world"), list.peek_back());
+
+        list.pop_back();
+
+        assert_eq!(Some(&"hello"), list.peek_front());
+        assert_eq!(Some(&"hello"), list.peek_back());
+
+        list.peek_mut_back().map(|val| *val = "rust");
+
+        assert_eq!(Some(&"rust"), list.peek_front());
+        assert_eq!(Some(&"rust"), list.peek_back());
+
+        list.push_front("hello");
+        list.peek_mut_front().map(|val| *val = "HELLO");
+
+        assert_eq!(Some(&"HELLO"), list.peek_front());
+        assert_eq!(Some(&"rust"), list.peek_back());
+
+        list.pop_back();
+        list.pop_front();
+
+        assert_eq!(None, list.peek_front());
+        assert_eq!(None, list.peek_back());
+    }
+
+    #[test]
+    fn iter() {
+        let mut list = List::new();
+
+        assert_eq!(0, list.len());
+        list.push_back(10);
+        list.push_back(20);
+        list.push_back(30);
+        list.push_back(40);
+        list.push_back(50);
+        assert_eq!(5, list.len());
+
+        let mut iter = list.iter();
+
+        assert_eq!(Some(&10), iter.next());
+        assert_eq!(Some(&20), iter.next());
+        assert_eq!(Some(&50), iter.next_back());
+        assert_eq!(Some(&40), iter.next_back());
+        assert_eq!(Some(&30), iter.next());
+        assert_eq!(None, iter.next());
+        assert_eq!(None, iter.next_back());
+
+        // List is unchanged
+        assert_eq!(5, list.len());
+        assert_eq!(Some(&10), list.peek_front());
+        assert_eq!(Some(&50), list.peek_back());
     }
 }

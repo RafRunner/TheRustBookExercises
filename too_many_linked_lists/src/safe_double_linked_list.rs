@@ -142,6 +142,14 @@ impl<T> List<T> {
     }
 }
 
+// Drop is needed to undo circular references in the Rc's
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        while self.pop_front().is_some() {
+        }
+    }
+}
+
 pub struct IntoIter<T>(List<T>);
 
 impl<T> Iterator for IntoIter<T> {
@@ -159,6 +167,7 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
 }
 
 // Really bad ideia, Don't really know how to improve while not using a vec and it will still be bad
+// Iter doubles as IterMut, since it returns RefCell's
 pub struct Iter<T> {
     current_head: Link<T>,
     current_tail: Link<T>,
@@ -261,7 +270,16 @@ mod tests {
 
         list.peek_front_mut().map(|mut val| *val = 100);
 
-        assert_eq!(100, *list.peek_front().unwrap());
-        assert_eq!(30, *list.peek_back().unwrap());
+        assert_eq!(Some(&100), list.peek_front().as_deref());
+        assert_eq!(Some(&30), list.peek_back().as_deref());
+
+        // Can still pop
+        assert_eq!(Some(100), list.pop_front());
+        assert_eq!(Some(30), list.pop_front());
+        assert_eq!(None, list.pop_front());
+
+        // And push
+        list.push_front(1000);
+        list.push_front(2000);
     }
 }
