@@ -15,6 +15,12 @@ struct Node<T> {
 
 type Link<T> = Option<Rc<Node<T>>>;
 
+impl <T> Default for ImmutableStack<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> ImmutableStack<T> {
     pub fn new() -> Self {
         ImmutableStack { head: None, len: 0 }
@@ -22,6 +28,10 @@ impl<T> ImmutableStack<T> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn prepend(&self, value: T) -> ImmutableStack<T> {
@@ -116,6 +126,7 @@ mod tests {
         let list = list.prepend(1).prepend(2).prepend(3);
         assert_eq!(list.head(), Some(&3));
         assert_eq!(list.len(), 3);
+        assert!(!list.is_empty());
 
         let list = list.tail();
         assert_eq!(list.head(), Some(&2));
@@ -126,6 +137,7 @@ mod tests {
         let list = list.tail();
         assert_eq!(list.head(), None);
         assert_eq!(list.len(), 0);
+        assert!(list.is_empty());
 
         // Make sure empty tail works
         let list = list.tail();
@@ -135,7 +147,7 @@ mod tests {
 
     #[test]
     fn is_immutable() {
-        let list1 = ImmutableStack::new();
+        let list1 = ImmutableStack::default();
 
         let list2 = list1.prepend("hello").prepend("I am").prepend("immutable");
 

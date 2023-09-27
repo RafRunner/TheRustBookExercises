@@ -15,6 +15,12 @@ pub struct Node<T> {
 
 pub type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
+impl <T> Default for List<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Node<T> {
     pub fn new(value: T) -> Rc<RefCell<Self>> {
         Rc::new(RefCell::new(Node {
@@ -36,6 +42,10 @@ impl<T> List<T> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn peek_front(&self) -> Option<Ref<T>> {
@@ -130,10 +140,6 @@ impl<T> List<T> {
         })
     }
 
-    pub fn into_iter(self) -> IntoIter<T> {
-        IntoIter(self)
-    }
-
     pub fn iter(&self) -> Iter<T> {
         Iter::new(self)
     }
@@ -143,6 +149,16 @@ impl<T> List<T> {
 impl<T> Drop for List<T> {
     fn drop(&mut self) {
         while self.pop_front().is_some() {}
+    }
+}
+
+impl <T> IntoIterator for List<T> {
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter(self)
     }
 }
 
@@ -231,10 +247,12 @@ mod tests {
         let mut list = List::new();
         assert!(list.peek_front().is_none());
         assert_eq!(0, list.len());
+        assert!(list.is_empty());
 
         list.push_front(23);
         assert_eq!(23, *list.peek_front().unwrap());
         assert_eq!(1, list.len());
+        assert!(!list.is_empty());
 
         list.push_front(17);
         assert_eq!(17, *list.peek_front().unwrap());
@@ -334,7 +352,7 @@ mod tests {
 
     #[test]
     fn peek_mut() {
-        let mut list = List::new();
+        let mut list = List::default();
 
         list.push_back(20);
         list.push_back(30);

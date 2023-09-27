@@ -22,6 +22,12 @@ impl<T> Node<T> {
     }
 }
 
+impl <T> Default for List<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> List<T> {
     pub fn new() -> Self {
         List {
@@ -33,6 +39,10 @@ impl<T> List<T> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn push_back(&mut self, value: T) {
@@ -276,7 +286,7 @@ mod test {
 
     #[test]
     fn back_and_front() {
-        let mut list = List::new();
+        let mut list = List::default();
 
         assert_eq!("[]", list.to_string());
 
@@ -358,6 +368,7 @@ mod test {
         let mut list = List::new();
 
         assert_eq!(0, list.len());
+        assert!(list.is_empty());
         list.push_back(10);
         list.push_back(20);
         list.push_back(30);
@@ -379,5 +390,6 @@ mod test {
         assert_eq!(5, list.len());
         assert_eq!(Some(&10), list.peek_front());
         assert_eq!(Some(&50), list.peek_back());
+        assert!(!list.is_empty());
     }
 }

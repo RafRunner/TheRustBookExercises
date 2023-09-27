@@ -14,6 +14,12 @@ struct Node<T> {
 
 type Link<T> = Option<Box<Node<T>>>;
 
+impl<T> Default for OkStack<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> OkStack<T> {
     pub fn new() -> Self {
         OkStack { head: None, len: 0 }
@@ -21,6 +27,10 @@ impl<T> OkStack<T> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn push(&mut self, value: T) {
@@ -51,10 +61,6 @@ impl<T> OkStack<T> {
         self.head.as_mut().map(|node| &mut node.value)
     }
 
-    pub fn into_iter(self) -> IntoIter<T> {
-        IntoIter(self)
-    }
-
     pub fn iter(&self) -> Iter<T> {
         Iter(self.head.as_deref())
     }
@@ -71,6 +77,16 @@ impl<T> Drop for OkStack<T> {
         while let Some(mut boxed_node) = curr {
             curr = boxed_node.next.take();
         }
+    }
+}
+
+impl <T> IntoIterator for OkStack<T> {
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter(self)
     }
 }
 
@@ -142,12 +158,14 @@ mod tests {
         let mut stack = OkStack::new();
 
         assert_eq!(0, stack.len());
+        assert!(stack.is_empty());
 
         stack.push(10);
         stack.push(20);
         stack.push(30);
 
         assert_eq!(3, stack.len());
+        assert!(!stack.is_empty());
 
         assert_eq!(Some(30), stack.pop());
         assert_eq!(Some(20), stack.pop());
@@ -158,11 +176,13 @@ mod tests {
         assert_eq!(Some(10), stack.pop());
 
         assert_eq!(0, stack.len());
+        assert!(stack.is_empty());
 
         assert_eq!(None, stack.pop());
         assert_eq!(None, stack.pop());
 
         assert_eq!(0, stack.len());
+        assert!(stack.is_empty());
     }
 
     #[test]
@@ -237,7 +257,7 @@ mod tests {
 
     #[test]
     fn display_test() {
-        let mut stack = OkStack::new();
+        let mut stack = OkStack::default();
 
         stack.push(0.10);
         stack.push(1.43);
@@ -257,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_peek_mut() {
-        let mut stack = OkStack::new();
+        let mut stack = OkStack::default();
         assert_eq!(None, stack.peek_mut());
 
         stack.push(100);
@@ -265,6 +285,6 @@ mod tests {
 
         *stack.peek_mut().unwrap() = 99;
 
-        assert_eq!(99, *stack.peek().unwrap());
+        assert_eq!(Some(&99), stack.peek());
     }
 }
