@@ -135,18 +135,14 @@ impl<T> List<T> {
     }
 
     pub fn iter(&self) -> Iter<T> {
-        Iter {
-            current_head: self.head.clone(),
-            current_tail: self.tail.clone(),
-        }
+        Iter::new(self)
     }
 }
 
 // Drop is needed to undo circular references in the Rc's
 impl<T> Drop for List<T> {
     fn drop(&mut self) {
-        while self.pop_front().is_some() {
-        }
+        while self.pop_front().is_some() {}
     }
 }
 
@@ -171,6 +167,36 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
 pub struct Iter<T> {
     current_head: Link<T>,
     current_tail: Link<T>,
+    last_item: bool,
+}
+
+impl<T> Iter<T> {
+    fn new(list: &List<T>) -> Self {
+        let mut iter = Iter {
+            current_head: list.head.clone(),
+            current_tail: list.tail.clone(),
+            last_item: false,
+        };
+
+        iter.check_finished();
+
+        iter
+    }
+
+    fn check_finished(&mut self) {
+        if self.current_head.is_none() || self.current_tail.is_none() || self.last_item {
+            self.current_head.take();
+            self.current_tail.take();
+            return;
+        }
+
+        if Rc::ptr_eq(
+            self.current_head.as_ref().unwrap(),
+            self.current_tail.as_ref().unwrap(),
+        ) {
+            self.last_item = true;
+        }
+    }
 }
 
 impl<T> Iterator for Iter<T> {
@@ -179,6 +205,7 @@ impl<T> Iterator for Iter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.current_head.take().map(|node| {
             self.current_head = node.borrow().next.clone();
+            self.check_finished();
             node.clone()
         })
     }
@@ -188,6 +215,7 @@ impl<T> DoubleEndedIterator for Iter<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.current_tail.take().map(|node| {
             self.current_tail = node.borrow().prev.clone();
+            self.check_finished();
             node.clone()
         })
     }
@@ -259,6 +287,49 @@ mod tests {
             "hello, I'm a double linked list, in Rust, please send help",
             frase
         );
+    }
+
+    #[test]
+    fn iter_and_iter_back() {
+        let mut list = List::new();
+
+        assert_eq!(0, list.len());
+        list.push_back(10);
+        list.push_back(20);
+        list.push_back(30);
+        list.push_back(40);
+        list.push_back(50);
+        assert_eq!(5, list.len());
+
+        let mut iter = list.iter();
+
+        assert_eq!(10, (*iter.next().unwrap().borrow()).value);
+        assert_eq!(20, (*iter.next().unwrap().borrow()).value);
+        assert_eq!(50, (*iter.next_back().unwrap().borrow()).value);
+        assert_eq!(40, (*iter.next_back().unwrap().borrow()).value);
+        assert_eq!(30, (*iter.next().unwrap().borrow()).value);
+        assert!(iter.next().is_none());
+        assert!(iter.next_back().is_none());
+
+        // List is unchanged
+        assert_eq!(5, list.len());
+        assert_eq!(Some(&10), list.peek_front().as_deref());
+        assert_eq!(Some(&50), list.peek_back().as_deref());
+
+        let mut list: List<i32> = List::new();
+        assert_eq!(0, list.iter().count());
+
+        list.push_front(20);
+        assert_eq!(1, list.iter().count());
+
+        list.push_front(30);
+        assert_eq!(2, list.iter().count());
+        
+        list.pop_front();
+        assert_eq!(1, list.iter().count());
+
+        list.pop_front();
+        assert_eq!(0, list.iter().count());
     }
 
     #[test]

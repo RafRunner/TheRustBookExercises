@@ -165,20 +165,14 @@ where
     fn fmt(&self, formater: &mut fmt::Formatter) -> fmt::Result {
         formater.write_str("[")?;
 
-        let mut first = true;
-        let mut pointer = self.head;
+        let mut iter = self.iter();
 
-        while !pointer.is_null() {
-            if first {
-                first = false;
-            } else {
-                formater.write_str(", ")?;
-            }
+        if let Some(first) = iter.next() {
+            formater.write_fmt(format_args!("{}", *first))?;
+        }
 
-            unsafe {
-                formater.write_fmt(format_args!("{}", (*pointer).value))?;
-                pointer = (*pointer).next;
-            }
+        for value in iter {
+            formater.write_fmt(format_args!(", {}", *value))?;
         }
 
         formater.write_str("]")
