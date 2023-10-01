@@ -1,4 +1,5 @@
 use std::cell::{Ref, RefCell, RefMut};
+use std::fmt::Debug;
 use std::rc::Rc;
 
 pub struct List<T> {
@@ -15,7 +16,7 @@ pub struct Node<T> {
 
 pub type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
-impl <T> Default for List<T> {
+impl<T> Default for List<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -140,8 +141,27 @@ impl<T> List<T> {
         })
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    // Since Iter hands out Rc<Refcell<...>>s to our nodes, it could be corrupted if you could create an Iter
+    // from a immutable reference, therefore this function takes in &mut self and we provide a unsafe version
+    // that only takes a immutable reference for internal use
+    pub fn iter(&mut self) -> Iter<T> {
         Iter::new(self)
+    }
+
+    unsafe fn iter_unsafe(&self) -> Iter<T> {
+        Iter::new(self)
+    }
+}
+
+impl<T: Debug> Debug for Node<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node").field("value", &self.value).finish()
+    }
+}
+
+impl<T: Debug> Debug for List<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unsafe { f.debug_list().entries(self.iter_unsafe()).finish() }
     }
 }
 
@@ -152,7 +172,7 @@ impl<T> Drop for List<T> {
     }
 }
 
-impl <T> IntoIterator for List<T> {
+impl<T> IntoIterator for List<T> {
     type Item = T;
 
     type IntoIter = IntoIter<T>;
@@ -170,6 +190,10 @@ impl<T> Iterator for IntoIter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.pop_front()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.0.len, Some(self.0.len))
+    }
 }
 
 impl<T> DoubleEndedIterator for IntoIter<T> {
@@ -178,39 +202,22 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
     }
 }
 
+impl<T> ExactSizeIterator for IntoIter<T> {}
+
 // Really bad ideia, Don't really know how to improve while not using a vec and it will still be bad
 // Iter doubles as IterMut, since it returns RefCell's
 pub struct Iter<T> {
     current_head: Link<T>,
     current_tail: Link<T>,
-    last_item: bool,
+    len: usize,
 }
 
 impl<T> Iter<T> {
     fn new(list: &List<T>) -> Self {
-        let mut iter = Iter {
+        Iter {
             current_head: list.head.clone(),
             current_tail: list.tail.clone(),
-            last_item: false,
-        };
-
-        iter.check_finished();
-
-        iter
-    }
-
-    fn check_finished(&mut self) {
-        if self.current_head.is_none() || self.current_tail.is_none() || self.last_item {
-            self.current_head.take();
-            self.current_tail.take();
-            return;
-        }
-
-        if Rc::ptr_eq(
-            self.current_head.as_ref().unwrap(),
-            self.current_tail.as_ref().unwrap(),
-        ) {
-            self.last_item = true;
+            len: list.len,
         }
     }
 }
@@ -219,23 +226,37 @@ impl<T> Iterator for Iter<T> {
     type Item = Rc<RefCell<Node<T>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.current_head.take().map(|node| {
-            self.current_head = node.borrow().next.clone();
-            self.check_finished();
-            node.clone()
-        })
+        if self.len > 0 {
+            self.current_head.take().map(|node| {
+                self.len -= 1;
+                self.current_head = node.borrow().next.clone();
+                node
+            })
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
     }
 }
 
 impl<T> DoubleEndedIterator for Iter<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.current_tail.take().map(|node| {
-            self.current_tail = node.borrow().prev.clone();
-            self.check_finished();
-            node.clone()
-        })
+        if self.len > 0 {
+            self.current_tail.take().map(|node| {
+                self.len -= 1;
+                self.current_tail = node.borrow().prev.clone();
+                node
+            })
+        } else {
+            None
+        }
     }
 }
+
+impl<T> ExactSizeIterator for Iter<T> {}
 
 #[cfg(test)]
 mod tests {
@@ -342,7 +363,7 @@ mod tests {
 
         list.push_front(30);
         assert_eq!(2, list.iter().count());
-        
+
         list.pop_front();
         assert_eq!(1, list.iter().count());
 

@@ -80,7 +80,7 @@ impl<T> Drop for OkStack<T> {
     }
 }
 
-impl <T> IntoIterator for OkStack<T> {
+impl<T> IntoIterator for OkStack<T> {
     type Item = T;
 
     type IntoIter = IntoIter<T>;

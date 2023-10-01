@@ -15,7 +15,7 @@ struct Node<T> {
 
 type Link<T> = Option<Rc<Node<T>>>;
 
-impl <T> Default for ImmutableStack<T> {
+impl<T> Default for ImmutableStack<T> {
     fn default() -> Self {
         Self::new()
     }

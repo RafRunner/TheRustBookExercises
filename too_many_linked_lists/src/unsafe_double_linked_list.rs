@@ -1,4 +1,9 @@
-use std::{fmt, fmt::Display, marker::PhantomData, ptr};
+use std::{
+    fmt,
+    fmt::{Debug, Display},
+    marker::PhantomData,
+    ptr::{self, NonNull},
+};
 
 pub struct List<T> {
     head: *mut Node<T>,
@@ -22,7 +27,7 @@ impl<T> Node<T> {
     }
 }
 
-impl <T> Default for List<T> {
+impl<T> Default for List<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -153,8 +158,9 @@ impl<T> List<T> {
 
     pub fn iter(&self) -> Iter<T> {
         Iter {
-            current_head: self.head,
-            current_tail: self.tail,
+            current_head: NonNull::new(self.head),
+            current_tail: NonNull::new(self.tail),
+            len: self.len,
             _boo: PhantomData,
         }
     }
@@ -163,8 +169,13 @@ impl<T> List<T> {
 // Drop here is also needed or we'll leak memory
 impl<T> Drop for List<T> {
     fn drop(&mut self) {
-        while self.pop_front().is_some() {
-        }
+        while self.pop_front().is_some() {}
+    }
+}
+
+impl<T: Debug> Debug for List<T> {
+    fn fmt(&self, formater: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formater.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -189,59 +200,84 @@ where
     }
 }
 
-pub struct Iter<'a, T> {
-    current_head: *const Node<T>,
-    current_tail: *const Node<T>,
-    _boo: PhantomData<&'a T>,
+impl<T> IntoIterator for List<T> {
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { list: self }
+    }
 }
 
-impl<'a, T> Iter<'a, T> {
-    fn have_pointers_met(&mut self) -> bool {
-        // front and back have met in the middle
-        if self.current_head == self.current_tail {
-            self.current_head = ptr::null();
-            self.current_tail = ptr::null();
+pub struct IntoIter<T> {
+    list: List<T>,
+}
 
-            true
-        } else {
-            false
-        }
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.list.pop_front()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.list.len, Some(self.list.len))
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.list.pop_back()
+    }
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {}
+
+pub struct Iter<'a, T> {
+    current_head: Option<NonNull<Node<T>>>,
+    current_tail: Option<NonNull<Node<T>>>,
+    len: usize,
+    _boo: PhantomData<&'a T>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_head.is_null() {
-            None
-        } else {
-            unsafe {
-                let reference = &(*self.current_head).value;
-                if !self.have_pointers_met() {
-                    self.current_head = (*self.current_head).next;
-                }
-                Some(reference)
-            }
+        match self.current_head.take() {
+            Some(head) if self.len > 0 => unsafe {
+                let reference = head.as_ref();
+                self.current_head = NonNull::new(reference.next);
+                self.len -= 1;
+
+                Some(&reference.value)
+            },
+            _ => None,
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
     }
 }
 
 impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.current_tail.is_null() {
-            None
-        } else {
-            unsafe {
-                let reference = &(*self.current_tail).value;
-                if !self.have_pointers_met() {
-                    self.current_tail = (*self.current_tail).prev;
-                }
-                Some(reference)
-            }
+        match self.current_tail.take() {
+            Some(tail) if self.len > 0 => unsafe {
+                let reference = tail.as_ref();
+                self.current_tail = NonNull::new(reference.prev);
+                self.len -= 1;
+
+                Some(&reference.value)
+            },
+            _ => None,
         }
     }
 }
+
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {}
 
 #[cfg(test)]
 mod test {
@@ -378,6 +414,8 @@ mod test {
 
         let mut iter = list.iter();
 
+        iter.len();
+
         assert_eq!(Some(&10), iter.next());
         assert_eq!(Some(&20), iter.next());
         assert_eq!(Some(&50), iter.next_back());
@@ -391,5 +429,49 @@ mod test {
         assert_eq!(Some(&10), list.peek_front());
         assert_eq!(Some(&50), list.peek_back());
         assert!(!list.is_empty());
+    }
+
+    #[test]
+    fn test_into_iter() {
+        let mut list = List::new();
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+
+        // Normal order
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), None);
+
+        // Testing DoubleEndedIterator
+        let mut list = List::new();
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next_back(), Some(3));
+        assert_eq!(iter.next_back(), Some(2));
+        assert_eq!(iter.next_back(), Some(1));
+        assert_eq!(iter.next_back(), None);
+
+        // Testing size_hint
+        let mut list = List::new();
+        list.push_back(1);
+        list.push_back(2);
+        list.push_back(3);
+
+        let mut iter = list.into_iter();
+        let (lower, upper) = iter.size_hint();
+        assert_eq!(lower, 3);
+        assert_eq!(upper, Some(3));
+        assert_eq!(iter.len(), 3);
+
+        assert_eq!(iter.next_back(), Some(3));
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next_back(), Some(2));
+        assert_eq!(iter.next(), None);
     }
 }
