@@ -1,5 +1,6 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub struct List<T> {
@@ -206,23 +207,25 @@ impl<T> ExactSizeIterator for IntoIter<T> {}
 
 // Really bad ideia, Don't really know how to improve while not using a vec and it will still be bad
 // Iter doubles as IterMut, since it returns RefCell's
-pub struct Iter<T> {
+pub struct Iter<'a, T> {
     current_head: Link<T>,
     current_tail: Link<T>,
     len: usize,
+    _boo: PhantomData<&'a T>
 }
 
-impl<T> Iter<T> {
+impl<'a, T> Iter<'a, T> {
     fn new(list: &List<T>) -> Self {
         Iter {
             current_head: list.head.clone(),
             current_tail: list.tail.clone(),
             len: list.len,
+            _boo: PhantomData
         }
     }
 }
 
-impl<T> Iterator for Iter<T> {
+impl<'a, T> Iterator for Iter<'a, T> {
     type Item = Rc<RefCell<Node<T>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -242,7 +245,7 @@ impl<T> Iterator for Iter<T> {
     }
 }
 
-impl<T> DoubleEndedIterator for Iter<T> {
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len > 0 {
             self.current_tail.take().map(|node| {
@@ -256,7 +259,7 @@ impl<T> DoubleEndedIterator for Iter<T> {
     }
 }
 
-impl<T> ExactSizeIterator for Iter<T> {}
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {}
 
 #[cfg(test)]
 mod tests {
@@ -311,8 +314,8 @@ mod tests {
         // The iter needs to be created in another scope to be dropped so the list can be popped
         // This is why implementing a reference Iterator is a bad ideia with interior mutability
         {
-            let in_rust: Vec<_> = list.iter().skip(1).take(1).collect();
-            assert_eq!("in Rust", in_rust[0].borrow().value);
+            let mut in_rust = list.iter().skip(1).take(1);
+            assert_eq!("in Rust", in_rust.next().unwrap().borrow().value);
         }
 
         // We can still use the list and it's unchanged
