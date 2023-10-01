@@ -1,7 +1,8 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::ops::{Deref, DerefMut};
+use std::rc::{Rc, Weak};
 
 pub struct List<T> {
     head: Link<T>,
@@ -15,7 +16,9 @@ pub struct Node<T> {
     pub value: T,
 }
 
-pub type Link<T> = Option<Rc<RefCell<Node<T>>>>;
+type Link<T> = Option<Rc<RefCell<Node<T>>>>;
+type WeakLink<T> = Option<Weak<RefCell<Node<T>>>>;
+
 
 impl<T> Default for List<T> {
     fn default() -> Self {
@@ -142,15 +145,12 @@ impl<T> List<T> {
         })
     }
 
-    // Since Iter hands out Rc<Refcell<...>>s to our nodes, it could be corrupted if you could create an Iter
-    // from a immutable reference, therefore this function takes in &mut self and we provide a unsafe version
-    // that only takes a immutable reference for internal use
-    pub fn iter(&mut self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<T> {
         Iter::new(self)
     }
 
-    unsafe fn iter_unsafe(&self) -> Iter<T> {
-        Iter::new(self)
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut::new(self)
     }
 }
 
@@ -162,7 +162,7 @@ impl<T: Debug> Debug for Node<T> {
 
 impl<T: Debug> Debug for List<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { f.debug_list().entries(self.iter_unsafe()).finish() }
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -205,35 +205,56 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
 
 impl<T> ExactSizeIterator for IntoIter<T> {}
 
-// Really bad ideia, Don't really know how to improve while not using a vec and it will still be bad
-// Iter doubles as IterMut, since it returns RefCell's
 pub struct Iter<'a, T> {
-    current_head: Link<T>,
-    current_tail: Link<T>,
+    current_head: WeakLink<T>,
+    last_yield: WeakLink<T>,
+    current_tail: WeakLink<T>,
     len: usize,
-    _boo: PhantomData<&'a T>
+    _boo: PhantomData<&'a T>,
 }
 
 impl<'a, T> Iter<'a, T> {
-    fn new(list: &List<T>) -> Self {
+    fn new(list: &'a List<T>) -> Self {
         Iter {
-            current_head: list.head.clone(),
-            current_tail: list.tail.clone(),
+            current_head: list.head.as_ref().map(Rc::downgrade),
+            last_yield: None,
+            current_tail: list.tail.as_ref().map(Rc::downgrade),
             len: list.len,
-            _boo: PhantomData
+            _boo: PhantomData,
         }
+    }
+
+    unsafe fn transform_lifetime<'y>(input: Ref<'_, T>) -> &'y T {
+        &*(input.deref() as *const T)
     }
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = Rc<RefCell<Node<T>>>;
+    type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.len > 0 {
             self.current_head.take().map(|node| {
                 self.len -= 1;
-                self.current_head = node.borrow().next.clone();
-                node
+                self.current_head = node
+                    .upgrade()
+                    .unwrap()
+                    .borrow()
+                    .next
+                    .as_ref()
+                    .map(Rc::downgrade);
+                self.last_yield = Some(node);
+                unsafe {
+                    Iter::transform_lifetime(Ref::map(
+                        self.last_yield
+                            .as_ref()
+                            .unwrap()
+                            .upgrade()
+                            .unwrap()
+                            .borrow(),
+                        |n| &n.value,
+                    ))
+                }
             })
         } else {
             None
@@ -250,8 +271,25 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
         if self.len > 0 {
             self.current_tail.take().map(|node| {
                 self.len -= 1;
-                self.current_tail = node.borrow().prev.clone();
-                node
+                self.current_tail = node
+                    .upgrade()
+                    .unwrap()
+                    .borrow()
+                    .prev
+                    .as_ref()
+                    .map(Rc::downgrade);
+                self.last_yield = Some(node);
+                unsafe {
+                    Iter::transform_lifetime(Ref::map(
+                        self.last_yield
+                            .as_ref()
+                            .unwrap()
+                            .upgrade()
+                            .unwrap()
+                            .borrow(),
+                        |n| &n.value,
+                    ))
+                }
             })
         } else {
             None
@@ -260,6 +298,100 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
 }
 
 impl<'a, T> ExactSizeIterator for Iter<'a, T> {}
+
+pub struct IterMut<'a, T> {
+    current_head: WeakLink<T>,
+    last_yield: WeakLink<T>,
+    current_tail: WeakLink<T>,
+    len: usize,
+    _boo: PhantomData<&'a mut T>,
+}
+
+impl<'a, T> IterMut<'a, T> {
+    fn new(list: &'a mut List<T>) -> Self {
+        IterMut {
+            current_head: list.head.as_ref().map(Rc::downgrade),
+            last_yield: None,
+            current_tail: list.tail.as_ref().map(Rc::downgrade),
+            len: list.len,
+            _boo: PhantomData,
+        }
+    }
+
+    unsafe fn transform_lifetime_mut<'y>(mut input: RefMut<'_, T>) -> &'y mut T {
+        &mut *(input.deref_mut() as *mut T)
+    }
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.current_head.take().map(|node| {
+                self.len -= 1;
+                self.current_head = node
+                    .upgrade()
+                    .unwrap()
+                    .borrow_mut()
+                    .next
+                    .as_ref()
+                    .map(Rc::downgrade);
+                self.last_yield = Some(node);
+                unsafe {
+                    IterMut::transform_lifetime_mut(RefMut::map(
+                        self.last_yield
+                            .as_mut()
+                            .unwrap()
+                            .upgrade()
+                            .unwrap()
+                            .borrow_mut(),
+                        |n| &mut n.value,
+                    ))
+                }
+            })
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.current_tail.take().map(|node| {
+                self.len -= 1;
+                self.current_tail = node
+                    .upgrade()
+                    .unwrap()
+                    .borrow_mut()
+                    .prev
+                    .as_ref()
+                    .map(Rc::downgrade);
+                self.last_yield = Some(node);
+                unsafe {
+                    IterMut::transform_lifetime_mut(RefMut::map(
+                        self.last_yield
+                            .as_mut()
+                            .unwrap()
+                            .upgrade()
+                            .unwrap()
+                            .borrow_mut(),
+                        |n| &mut n.value,
+                    ))
+                }
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {}
 
 #[cfg(test)]
 mod tests {
@@ -311,16 +443,12 @@ mod tests {
         list.push_front("in Rust");
         list.push_front("please send help");
 
-        // The iter needs to be created in another scope to be dropped so the list can be popped
-        // This is why implementing a reference Iterator is a bad ideia with interior mutability
-        {
-            let mut in_rust = list.iter().skip(1).take(1);
-            assert_eq!("in Rust", in_rust.next().unwrap().borrow().value);
-        }
+        let mut in_rust = list.iter().skip(1).take(1);
+        assert_eq!(&"in Rust", in_rust.next().unwrap());
 
         // We can still use the list and it's unchanged
         assert_eq!(4, list.len());
-        // We can create an iter in the same scope as long as we don't borrow anything
+        assert_eq!(4, list.iter().len());
         assert_eq!(4, list.iter().count());
 
         let frase = list.into_iter().rev().collect::<Vec<&str>>().join(", ");
@@ -345,11 +473,12 @@ mod tests {
 
         let mut iter = list.iter();
 
-        assert_eq!(10, (*iter.next().unwrap().borrow()).value);
-        assert_eq!(20, (*iter.next().unwrap().borrow()).value);
-        assert_eq!(50, (*iter.next_back().unwrap().borrow()).value);
-        assert_eq!(40, (*iter.next_back().unwrap().borrow()).value);
-        assert_eq!(30, (*iter.next().unwrap().borrow()).value);
+        assert_eq!(5, iter.len());
+        assert_eq!(Some(&10), iter.next());
+        assert_eq!(Some(&20), iter.next());
+        assert_eq!(Some(&50), iter.next_back());
+        assert_eq!(Some(&40), iter.next_back());
+        assert_eq!(Some(&30), iter.next());
         assert!(iter.next().is_none());
         assert!(iter.next_back().is_none());
 
@@ -394,5 +523,42 @@ mod tests {
         // And push
         list.push_front(1000);
         list.push_front(2000);
+
+        assert_eq!(Some(&1000), list.peek_back().as_deref());
+        assert_eq!(Some(&2000), list.peek_front().as_deref());
+    }
+
+    #[test]
+    fn iter_mut() {
+        let mut list = List::default();
+
+        for i in 0..5 {
+            list.push_back(i);
+        }
+
+        for (index, val) in list.iter_mut().rev().enumerate() {
+            *val = *val * 2 + index;
+        }
+
+        assert!(vec![4, 5, 6, 7, 8].iter().eq(list.iter()));
+        assert_eq!(5, list.len());
+
+        let mut list = List::new();
+
+        list.push_front(String::from("Mario"));
+        list.push_front(String::from("Luigi"));
+
+        for name in list.iter_mut() {
+            *name = format!("Hello, {}", name);
+        }
+
+        assert_eq!(
+            Some(&String::from("Hello, Luigi")),
+            list.peek_front().as_deref()
+        );
+        assert_eq!(
+            Some(&String::from("Hello, Mario")),
+            list.peek_back().as_deref()
+        );
     }
 }
