@@ -19,7 +19,6 @@ pub struct Node<T> {
 type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 type WeakLink<T> = Option<Weak<RefCell<Node<T>>>>;
 
-
 impl<T> Default for List<T> {
     fn default() -> Self {
         Self::new()
@@ -540,7 +539,7 @@ mod tests {
             *val = *val * 2 + index;
         }
 
-        assert!(vec![4, 5, 6, 7, 8].iter().eq(list.iter()));
+        assert!([4, 5, 6, 7, 8].iter().eq(list.iter()));
         assert_eq!(5, list.len());
 
         let mut list = List::new();

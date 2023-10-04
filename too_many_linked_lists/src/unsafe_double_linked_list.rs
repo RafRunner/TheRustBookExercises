@@ -1,6 +1,8 @@
 use std::{
+    cmp::Ordering,
     fmt,
     fmt::{Debug, Display},
+    hash::{Hash, Hasher},
     marker::PhantomData,
     ptr::{self, NonNull},
 };
@@ -164,6 +166,15 @@ impl<T> List<T> {
             _boo: PhantomData,
         }
     }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            current_head: NonNull::new(self.head),
+            current_tail: NonNull::new(self.tail),
+            len: self.len,
+            _boo: PhantomData,
+        }
+    }
 }
 
 // Drop here is also needed or we'll leak memory
@@ -207,6 +218,71 @@ impl<T> IntoIterator for List<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter { list: self }
+    }
+}
+
+impl<T> FromIterator<T> for List<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut list = List::new();
+
+        for item in iter {
+            list.push_back(item);
+        }
+
+        list
+    }
+}
+
+impl<T: Clone> Clone for List<T> {
+    fn clone(&self) -> Self {
+        let mut clone = List::new();
+
+        for item in self.iter() {
+            clone.push_front(item.clone());
+        }
+
+        clone
+    }
+}
+
+impl<T> Extend<T> for List<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            self.push_back(item);
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for List<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.len == other.len && self.iter().eq(other.iter())
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.len != other.len || self.iter().ne(other.iter())
+    }
+}
+
+impl<T: Eq> Eq for List<T> {}
+
+impl<T: PartialOrd> PartialOrd for List<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.iter().partial_cmp(other.iter())
+    }
+}
+
+impl<T: Ord> Ord for List<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(other.iter())
+    }
+}
+
+impl<T: Hash> Hash for List<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.len.hash(state);
+        for item in self.iter() {
+            item.hash(state);
+        }
     }
 }
 
@@ -278,6 +354,51 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
 }
 
 impl<'a, T> ExactSizeIterator for Iter<'a, T> {}
+
+pub struct IterMut<'a, T> {
+    current_head: Option<NonNull<Node<T>>>,
+    current_tail: Option<NonNull<Node<T>>>,
+    len: usize,
+    _boo: PhantomData<&'a mut T>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.current_head.take() {
+            Some(mut head) if self.len > 0 => unsafe {
+                let reference = head.as_mut();
+                self.current_head = NonNull::new(reference.next);
+                self.len -= 1;
+
+                Some(&mut reference.value)
+            },
+            _ => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self.current_tail.take() {
+            Some(mut tail) if self.len > 0 => unsafe {
+                let reference = tail.as_mut();
+                self.current_tail = NonNull::new(reference.prev);
+                self.len -= 1;
+
+                Some(&mut reference.value)
+            },
+            _ => None,
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {}
 
 #[cfg(test)]
 mod test {
@@ -473,5 +594,27 @@ mod test {
         assert_eq!(iter.next(), Some(1));
         assert_eq!(iter.next_back(), Some(2));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn from_iterator_and_iter_mut() {
+        let mut count = 0;
+        let counter = std::iter::from_fn(move || {
+            count += 1;
+            Some(count)
+        })
+        .take(5);
+
+        let mut list = counter.collect::<List<_>>();
+
+        assert_eq!(5, list.iter().len());
+        assert!([1, 2, 3, 4, 5].iter().eq(list.iter()));
+
+        for item in list.iter_mut() {
+            *item += 10;
+        }
+
+        assert_eq!(5, list.iter().len());
+        assert!([11, 12, 13, 14, 15].iter().eq(list.iter()));
     }
 }
