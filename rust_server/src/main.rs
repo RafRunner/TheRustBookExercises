@@ -1,7 +1,9 @@
-use rust_server::http::{HttpMethod, HttpRequest};
+use rust_server::http::request::HttpRequest;
+use rust_server::http::response::{HttpResponse, HttpStatus};
+use rust_server::http::HttpMethod;
 use std::{
     fs,
-    io::{prelude::*, BufReader},
+    io::BufReader,
     net::{TcpListener, TcpStream},
     thread,
     time::Duration,
@@ -35,19 +37,18 @@ fn handle_connection(mut stream: TcpStream) {
     dbg!(&request);
     dbg!(&request.body_as_string());
 
-    let (status_line, filename) = match (request.method, request.path.as_str()) {
-        (HttpMethod::GET, "/") => ("HTTP/1.1 200 OK", "hello.html"),
+    let (status, filename) = match (request.method, request.path.as_str()) {
+        (HttpMethod::GET, "/") => (HttpStatus::Ok, "hello.html"),
         (HttpMethod::GET, "/sleep") => {
             thread::sleep(Duration::from_secs(5));
-            ("HTTP/1.1 200 OK", "sleepy.html")
+            (HttpStatus::Ok, "sleepy.html")
         }
-        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+        _ => (HttpStatus::NotFound, "404.html"),
     };
 
     let contents = fs::read_to_string(format!("res/{filename}")).unwrap();
-    let length = contents.len();
+    let mut response = HttpResponse::new(status);
+    response.str_entity(&contents, "text/html");
 
-    let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-
-    stream.write_all(response.as_bytes()).unwrap();
+    response.write(stream);
 }
