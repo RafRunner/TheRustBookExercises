@@ -1,7 +1,9 @@
 use std::{
     sync::{mpsc, Arc, Mutex},
     thread::{self, JoinHandle},
+    panic
 };
+use std::panic::UnwindSafe;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -13,7 +15,7 @@ struct Worker {
     thread: Option<JoinHandle<()>>,
 }
 
-type Job = Box<dyn FnOnce() + Send + 'static>;
+type Job = Box<dyn FnOnce() + Send + UnwindSafe + 'static>;
 
 impl ThreadPool {
     pub fn new(size: usize) -> Self {
@@ -34,7 +36,7 @@ impl ThreadPool {
 
     pub fn execute<F>(&self, f: F)
     where
-        F: FnOnce() + Send + 'static,
+        F: FnOnce() + Send + UnwindSafe + 'static,
     {
         let job = Box::new(f);
 
@@ -66,7 +68,10 @@ impl Worker {
             match message {
                 Ok(job) => {
                     println!("Worker {id} got a job; executing.");
-                    job();
+                    let job_result = panic::catch_unwind(move || job());
+                    if let Err(_) = job_result {
+                        eprintln!("Job on Worker {id} panicked!")
+                    }
                 }
                 Err(_) => {
                     println!("Worker {id} disconnected; shutting down.");

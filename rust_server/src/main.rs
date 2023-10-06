@@ -34,9 +34,6 @@ fn handle_connection(mut stream: TcpStream) {
 
     let request = HttpRequest::build(&mut buf_reader).unwrap();
 
-    dbg!(&request);
-    dbg!(&request.body_as_string());
-
     let (status, filename) = match (request.method, request.path.as_str()) {
         (HttpMethod::GET, "/") => (HttpStatus::Ok, "hello.html"),
         (HttpMethod::GET, "/sleep") => {
