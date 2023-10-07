@@ -37,7 +37,7 @@ impl HttpRequest {
             }
 
             if let Some((key, value)) = header_line.split_once(':') {
-                headers.set(key, value);
+                headers.put(key, value);
             }
         }
 

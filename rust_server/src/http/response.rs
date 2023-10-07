@@ -24,8 +24,8 @@ impl HttpResponse {
 
     pub fn entity(&mut self, entity: &[u8], content_type: &str) {
         self.headers
-            .set("Content-Length", &entity.len().to_string());
-        self.headers.set("Content-Type", content_type);
+            .put("Content-Length", &entity.len().to_string());
+        self.headers.put("Content-Type", content_type);
 
         self.entity = Some(Vec::from(entity));
     }
@@ -40,7 +40,7 @@ impl HttpResponse {
             self.version,
             self.status.code(),
             self.status.reason_phrase(),
-            self.headers
+            self.headers.response_string()
         );
         let mut bytes = Vec::from(response.as_bytes());
         if let Some(entity) = &self.entity {
