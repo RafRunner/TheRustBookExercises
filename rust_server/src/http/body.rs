@@ -2,7 +2,7 @@ use std::io::BufRead;
 
 use super::Headers;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct HttpBody {
     raw_body: Vec<u8>,
 }
@@ -32,13 +32,5 @@ impl HttpBody {
 
     pub fn as_str_lossy(&self) -> String {
         String::from_utf8_lossy(&self.raw_body).into_owned()
-    }
-}
-
-impl Default for HttpBody {
-    fn default() -> Self {
-        Self {
-            raw_body: Default::default(),
-        }
     }
 }

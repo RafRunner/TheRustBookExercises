@@ -1,9 +1,9 @@
+use std::panic::UnwindSafe;
 use std::{
+    panic,
     sync::{mpsc, Arc, Mutex},
     thread::{self, JoinHandle},
-    panic
 };
-use std::panic::UnwindSafe;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -68,8 +68,8 @@ impl Worker {
             match message {
                 Ok(job) => {
                     println!("Worker {id} got a job; executing.");
-                    let job_result = panic::catch_unwind(move || job());
-                    if let Err(_) = job_result {
+                    let job_result = panic::catch_unwind(job);
+                    if job_result.is_err() {
                         eprintln!("Job on Worker {id} panicked!")
                     }
                 }
