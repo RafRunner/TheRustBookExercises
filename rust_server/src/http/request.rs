@@ -2,13 +2,15 @@ use crate::http::{Headers, HttpMethod, HttpVersion};
 use anyhow::{anyhow, Result};
 use std::io::BufRead;
 
+use super::body::HttpBody;
+
 #[derive(Debug)]
 pub struct HttpRequest {
     pub method: HttpMethod,
     pub path: String,
     pub version: HttpVersion,
     pub headers: Headers,
-    pub body: Option<Vec<u8>>,
+    pub body: Option<HttpBody>,
 }
 
 impl HttpRequest {
@@ -39,7 +41,7 @@ impl HttpRequest {
             }
         }
 
-        let body = read_body(&headers, &mut buf_reader);
+        let body = HttpBody::build(&headers, buf_reader);
 
         let method = HttpMethod::new(props[0]);
         let path = props[1].to_owned();
@@ -53,12 +55,6 @@ impl HttpRequest {
             body,
         })
     }
-
-    pub fn body_as_string(&self) -> Option<String> {
-        self.body
-            .as_ref()
-            .map(|body| String::from_utf8_lossy(body).into_owned())
-    }
 }
 
 fn read_utf8_line(buf_reader: &mut dyn BufRead) -> Result<String> {
@@ -66,18 +62,4 @@ fn read_utf8_line(buf_reader: &mut dyn BufRead) -> Result<String> {
     buf_reader.read_until(b'\n', &mut request_line)?;
 
     String::from_utf8(request_line).map_err(|_| anyhow!("Unexpected non UTF-8 string"))
-}
-
-fn read_body(headers: &Headers, buf_reader: &mut dyn BufRead) -> Option<Vec<u8>> {
-    headers
-        .get("content-length")
-        .and_then(|content_length| content_length[0].parse::<usize>().ok())
-        .filter(|content_length| *content_length > 0)
-        .and_then(|content_length| {
-            let mut body = vec![0u8; content_length];
-            match buf_reader.read_exact(&mut body) {
-                Ok(()) => Some(body),
-                Err(_) => None,
-            }
-        })
 }

@@ -1,6 +1,3 @@
-use rust_server::http::request::HttpRequest;
-use rust_server::http::response::{HttpResponse, HttpStatus};
-use rust_server::http::HttpMethod;
 use std::{
     fs,
     io::BufReader,
@@ -9,7 +6,10 @@ use std::{
     time::Duration,
 };
 
-use rust_server::thread_pool::ThreadPool;
+use rust_server::{
+    http::{HttpMethod, HttpRequest, HttpResponse, HttpStatus},
+    thread_pool::ThreadPool,
+};
 
 fn main() {
     let listener = TcpListener::bind("localhost:7878").unwrap();
