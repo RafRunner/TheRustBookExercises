@@ -33,7 +33,7 @@ impl Headers {
         self.raw_headers.get(key)
     }
 
-    pub fn get_single(&self, key: &str) -> Option<&String> {
+    pub fn get_first(&self, key: &str) -> Option<&String> {
         self.raw_headers.get(key).and_then(|vec| vec.get(0))
     }
 
@@ -55,7 +55,7 @@ impl Display for Headers {
             }
             f.write_str("\r\n")?;
         }
-        f.write_str("")
+        Ok(())
     }
 }
 
