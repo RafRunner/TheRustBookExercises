@@ -1,18 +1,20 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
+
+use linked_hash_map::LinkedHashMap;
 
 #[derive(Debug)]
 pub struct Headers {
-    raw_headers: HashMap<String, Vec<String>>,
+    raw_headers: LinkedHashMap<String, Vec<String>>,
 }
 
 pub struct Iter<'a> {
-    inner_iter: std::collections::hash_map::Iter<'a, String, Vec<String>>,
+    inner_iter: linked_hash_map::Iter<'a, String, Vec<String>>,
 }
 
 impl Headers {
     pub fn new() -> Self {
         Self {
-            raw_headers: HashMap::new(),
+            raw_headers: LinkedHashMap::new(),
         }
     }
 

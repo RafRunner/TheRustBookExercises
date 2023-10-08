@@ -2,7 +2,7 @@ use std::io::BufRead;
 
 use super::Headers;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct HttpBody {
     raw_body: Vec<u8>,
 }

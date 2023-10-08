@@ -13,5 +13,6 @@ panic = "unwind"
 
 [dependencies]
 anyhow = "1.0.75"
+linked-hash-map = "0.5.6"
 strum = "0.25.0"
 strum_macros = "0.25.2"
