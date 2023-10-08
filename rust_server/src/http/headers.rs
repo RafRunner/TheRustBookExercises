@@ -4,11 +4,26 @@ use linked_hash_map::LinkedHashMap;
 
 #[derive(Debug)]
 pub struct Headers {
-    raw_headers: LinkedHashMap<String, Vec<String>>,
+    raw_headers: LinkedHashMap<String, HeaderEntry>,
+}
+
+#[derive(Debug)]
+struct HeaderEntry {
+    original_key: String,
+    values: Vec<String>,
 }
 
 pub struct Iter<'a> {
-    inner_iter: linked_hash_map::Iter<'a, String, Vec<String>>,
+    inner_iter: linked_hash_map::Iter<'a, String, HeaderEntry>,
+}
+
+impl HeaderEntry {
+    fn new(key: &str) -> Self {
+        Self {
+            original_key: String::from(key),
+            values: Vec::new(),
+        }
+    }
 }
 
 impl Headers {
@@ -27,24 +42,28 @@ impl Headers {
     }
 
     pub fn put(&mut self, key: &str, value: &str) {
-        let key = sanitize_key(key);
+        let sanitized_key = sanitize_key(key);
 
         self.raw_headers
-            .entry(key)
-            .or_insert(Vec::new())
+            .entry(sanitized_key)
+            .or_insert(HeaderEntry::new(key))
+            .values
             .push(value.trim().to_owned());
     }
 
     pub fn set_all(&mut self, key: &str, value: &[&str]) {
-        self.raw_headers.insert(
-            key.to_owned(),
-            value.iter().map(|it| String::from(*it)).collect(),
-        );
+        let sanitized_key = sanitize_key(key);
+        let mut header_value = HeaderEntry::new(key);
+        header_value
+            .values
+            .extend(value.iter().map(|it| String::from(*it)));
+
+        self.raw_headers.insert(sanitized_key, header_value);
     }
 
     pub fn get(&self, key: &str) -> Option<&Vec<String>> {
         let key = sanitize_key(key);
-        self.raw_headers.get(&key)
+        self.raw_headers.get(&key).map(|it| &it.values)
     }
 
     pub fn get_first(&self, key: &str) -> Option<&String> {
@@ -53,7 +72,7 @@ impl Headers {
 
     pub fn remove(&mut self, key: &str) -> Option<Vec<String>> {
         let key = sanitize_key(key);
-        self.raw_headers.remove(&key)
+        self.raw_headers.remove(&key).map(|it| it.values)
     }
 
     pub fn clear(&mut self) {
@@ -99,7 +118,11 @@ impl<'a> Iterator for Iter<'a> {
     type Item = (&'a String, &'a Vec<String>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner_iter.next()
+        if let Some((_, value)) = self.inner_iter.next() {
+            Some((&value.original_key, &value.values))
+        } else {
+            None
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -143,8 +166,8 @@ mod tests {
 
         header.put("maNy", "0");
         assert_eq!(Some(1), header.get("Many").map(|v| v.len()));
-        header.set_all("many", &["1", "2", "3"]);
-        assert_eq!(Some(3), header.get("Many").map(|v| v.len()));
+        header.set_all("Many", &["1", "2", "3"]);
+        assert_eq!(Some(3), header.get("many").map(|v| v.len()));
 
         header.put("Content-Legth", "223");
         let iter = header.into_iter();
@@ -152,14 +175,14 @@ mod tests {
 
         assert_eq!(
             223,
-            iter.filter(|(key, _)| key == &"content-legth")
+            iter.filter(|(key, _)| key == &"Content-Legth")
                 .map(|(_, val)| val[0].parse::<i32>().unwrap())
                 .take(1)
                 .collect::<Vec<_>>()[0]
         );
 
         assert_eq!(
-            "many: 1\r\nmany: 2\r\nmany: 3\r\ncontent-legth: 223\r\n",
+            "Many: 1\r\nMany: 2\r\nMany: 3\r\nContent-Legth: 223\r\n",
             header.response_string()
         );
     }
