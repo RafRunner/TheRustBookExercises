@@ -66,8 +66,15 @@ impl Headers {
         self.raw_headers.get(&key).map(|it| &it.values)
     }
 
-    pub fn get_first(&self, key: &str) -> Option<&String> {
-        self.get(key).and_then(|vec| vec.get(0))
+    pub fn get_first(&self, key: &str) -> Option<&str> {
+        self.get(key)
+            .and_then(|vec| vec.get(0))
+            .map(|string| string.as_str())
+    }
+
+    pub fn get_splitting_commas(&self, key: &str) -> Option<impl DoubleEndedIterator<Item = &str>> {
+        self.get(key)
+            .map(|vec| vec.iter().flat_map(|value| value.split(',')))
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Vec<String>> {
@@ -137,9 +144,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn header_basics() {
-        let mut header = Headers::new();
+    fn test_initialization() {
+        let header = Headers::new();
         assert_eq!(0, header.len());
+        assert!(header.is_empty());
+    }
+
+    #[test]
+    fn test_put_and_get() {
+        let mut header = Headers::new();
 
         header.put("Token", "1234");
         assert_eq!(1, header.len());
@@ -151,25 +164,48 @@ mod tests {
             Some(&vec!["1234".to_owned(), "Another token".to_owned()]),
             header.get("Token")
         );
-        assert_eq!(Some(&"1234".to_owned()), header.get_first("token"));
+
+        assert_eq!(Some("1234"), header.get_first("token"));
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut header = Headers::new();
+        header.put("Token", "1234");
+        header.put("TokEn", "Another token");
 
         assert_eq!(
             Some(vec!["1234".to_owned(), "Another token".to_owned()]),
             header.remove("Token")
         );
         assert_eq!(None, header.get("Token"));
+    }
 
+    #[test]
+    fn test_clear() {
+        let mut header = Headers::new();
         header.put("Temp", "Hello");
 
         header.clear();
         assert!(header.is_empty());
+    }
+
+    #[test]
+    fn test_set_all() {
+        let mut header = Headers::new();
 
         header.put("maNy", "0");
         assert_eq!(Some(1), header.get("Many").map(|v| v.len()));
         header.set_all("Many", &["1", "2", "3"]);
         assert_eq!(Some(3), header.get("many").map(|v| v.len()));
+    }
+
+    #[test]
+    fn test_into_iter() {
+        let mut header = Headers::new();
 
         header.put("Content-Legth", "223");
+        header.put("Authorization", "Basic sauyfiueyury2387r723vro8w");
         let iter = header.into_iter();
         assert_eq!(2, iter.len());
 
@@ -180,10 +216,36 @@ mod tests {
                 .take(1)
                 .collect::<Vec<_>>()[0]
         );
+    }
+
+    #[test]
+    fn test_response_string() {
+        let mut header = Headers::new();
+
+        header.put("maNy", "0");
+        header.set_all("Many", &["1", "2", "3"]);
+        header.put("Content-Legth", "223");
 
         assert_eq!(
             "Many: 1\r\nMany: 2\r\nMany: 3\r\nContent-Legth: 223\r\n",
             header.response_string()
         );
+    }
+
+    #[test]
+    fn test_get_spliting_comas() {
+        let mut headers = Headers::default();
+
+        headers.put("Accept", "application/json");
+        headers.put("Accept", "application/html,*/*");
+
+        assert_eq!(1, headers.len());
+        assert!(!headers.is_empty());
+
+        let all_accept = headers.get_splitting_commas("Accept").unwrap();
+
+        assert!(["application/json", "application/html", "*/*"]
+            .into_iter()
+            .eq(all_accept));
     }
 }
