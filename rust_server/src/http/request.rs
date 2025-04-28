@@ -11,11 +11,14 @@ pub struct HttpRequest {
     pub version: HttpVersion,
     pub headers: Headers,
     pub body: Option<HttpBody>,
+
+    pub raw_request: String,
 }
 
 impl HttpRequest {
     pub fn build(mut buf_reader: &mut dyn BufRead) -> Result<Self> {
         let request_line = read_utf8_line(&mut buf_reader)?;
+        let mut raw_request = request_line.clone();
 
         let props = request_line
             .trim()
@@ -30,6 +33,7 @@ impl HttpRequest {
 
         loop {
             let header_line = read_utf8_line(&mut buf_reader)?;
+            raw_request.push_str(&header_line);
             let header_line = header_line.trim();
 
             if header_line.is_empty() {
@@ -43,6 +47,10 @@ impl HttpRequest {
 
         let body = HttpBody::build(&headers, buf_reader);
 
+        if let Some(body) = &body {
+            raw_request.push_str(&body.as_str_lossy());
+        }
+
         let method = HttpMethod::new(props[0]);
         let path = props[1].to_owned();
         let version = HttpVersion::build(props[2])?;
@@ -53,6 +61,7 @@ impl HttpRequest {
             version,
             headers,
             body,
+            raw_request,
         })
     }
 }

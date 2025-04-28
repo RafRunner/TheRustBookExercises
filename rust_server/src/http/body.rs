@@ -16,8 +16,8 @@ impl HttpBody {
 
     pub fn build(headers: &Headers, buf_reader: &mut dyn BufRead) -> Option<Self> {
         let raw = headers
-            .get("content-length")
-            .and_then(|content_length| content_length[0].parse::<usize>().ok())
+            .get_first("content-length")
+            .and_then(|content_length| content_length.parse::<usize>().ok())
             .filter(|content_length| *content_length > 0)
             .and_then(|content_length| {
                 let mut body = vec![0u8; content_length];

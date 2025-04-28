@@ -15,10 +15,13 @@ fn main() {
     let listener = TcpListener::bind("localhost:7878").unwrap();
     let pool = ThreadPool::new(4);
 
+    println!("Listening on port 7878...");
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 pool.execute(|| {
+                    println!("New connection established.");
                     handle_connection(stream);
                 });
             }
@@ -27,6 +30,7 @@ fn main() {
             }
         }
     }
+    println!("Server shutting down...");
 }
 
 fn handle_connection(mut stream: TcpStream) {
@@ -39,13 +43,20 @@ fn handle_connection(mut stream: TcpStream) {
         (HttpMethod::GET, "/sleep") => {
             thread::sleep(Duration::from_secs(5));
             (HttpStatus::Ok, "sleepy.html")
-        }
+        },
+        (_, "/echo") => {
+            let body = request.raw_request;
+            let mut response = HttpResponse::new(HttpStatus::Ok);
+            response.str_entity(&body, "text/plain; charset=utf-8");
+            response.write(stream);
+            return;
+        },
         _ => (HttpStatus::NotFound, "404.html"),
     };
 
     let contents = fs::read_to_string(format!("res/{filename}")).unwrap();
     let mut response = HttpResponse::new(status);
-    response.str_entity(&contents, "text/html");
+    response.str_entity(&contents, "text/html; charset=utf-8");
 
     response.write(stream);
 }

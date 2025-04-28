@@ -51,30 +51,31 @@ impl Headers {
             .push(value.trim().to_owned());
     }
 
-    pub fn set_all(&mut self, key: &str, value: &[&str]) {
-        let sanitized_key = sanitize_key(key);
-        let mut header_value = HeaderEntry::new(key);
-        header_value
-            .values
-            .extend(value.iter().map(|it| String::from(*it)));
+    pub fn set_all(&mut self, key: &str, values: &[&str]) -> Option<Vec<String>> {
+        let old_value = self.remove(key);
 
-        self.raw_headers.insert(sanitized_key, header_value);
+        for value in values {
+            self.put(key, value);
+        }
+
+        old_value
     }
 
-    pub fn get(&self, key: &str) -> Option<&Vec<String>> {
+    pub fn get(&self, key: &str) -> Option<&[String]> {
         let key = sanitize_key(key);
-        self.raw_headers.get(&key).map(|it| &it.values)
+        self.raw_headers.get(&key).map(|it| it.values.as_slice())
     }
 
     pub fn get_first(&self, key: &str) -> Option<&str> {
         self.get(key)
-            .and_then(|vec| vec.get(0))
-            .map(|string| string.as_str())
+            .map(|values| values[0].as_str())
     }
 
     pub fn get_splitting_commas(&self, key: &str) -> Option<impl DoubleEndedIterator<Item = &str>> {
-        self.get(key)
-            .map(|vec| vec.iter().flat_map(|value| value.split(',')))
+        self.get(key).map(|vec| {
+            vec.iter()
+                .flat_map(|value| value.split(',').map(|s| s.trim()))
+        })
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Vec<String>> {
@@ -156,12 +157,12 @@ mod tests {
 
         header.put("Token", "1234");
         assert_eq!(1, header.len());
-        assert_eq!(Some(&vec!["1234".to_owned()]), header.get("Token"));
+        assert_eq!(Some(&["1234".to_owned()][..]), header.get("Token"));
 
         header.put("TokEn", "Another token");
         assert_eq!(1, header.len());
         assert_eq!(
-            Some(&vec!["1234".to_owned(), "Another token".to_owned()]),
+            Some(&["1234".to_owned(), "Another token".to_owned()][..]),
             header.get("Token")
         );
 
